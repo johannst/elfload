@@ -289,20 +289,20 @@ impl<const N: usize> Elf<'_, N> {
             let w = (flags & PF_W) != 0;
             let r = (flags & PF_R) != 0;
 
-            load_segments_slice = if let Some((slot, rest)) = load_segments_slice.split_first_mut()
-            {
-                *slot = Some(LoadSegment {
-                    vaddr,
-                    bytes,
-                    zero_pad: memsz - filesz,
-                    x,
-                    w,
-                    r,
-                });
-                rest
-            } else {
-                return Err(Error::OutOfLoadSegments);
-            };
+            load_segments_slice = load_segments_slice
+                .split_first_mut()
+                .map(|(slot, rest)| {
+                    *slot = Some(LoadSegment {
+                        vaddr,
+                        bytes,
+                        zero_pad: memsz - filesz,
+                        x,
+                        w,
+                        r,
+                    });
+                    rest
+                })
+                .ok_or(Error::OutOfLoadSegments)?;
         }
 
         Ok(Elf {
