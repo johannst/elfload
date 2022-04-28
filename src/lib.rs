@@ -199,7 +199,7 @@ pub struct Elf<'bytes, const N: usize> {
 }
 
 impl<const N: usize> Elf<'_, N> {
-    pub fn parse<'bytes>(b: &'bytes [u8]) -> Result<Elf<'bytes, N>> {
+    pub fn parse(b: &[u8]) -> Result<Elf<'_, N>> {
         let mut r = ElfReader::new(b);
 
         //
