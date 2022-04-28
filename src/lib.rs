@@ -20,7 +20,7 @@ trait FromEndian: Sized {
     fn from_be_bytes<B: AsRef<[u8]>>(bytes: B) -> Option<Self>;
 }
 
-macro_rules! impl_endian_read {
+macro_rules! impl_from_endian {
     ($ty: ty) => {
         impl FromEndian for $ty {
             fn from_le_bytes<B: AsRef<[u8]>>(bytes: B) -> Option<Self> {
@@ -44,9 +44,9 @@ macro_rules! impl_endian_read {
     };
 }
 
-impl_endian_read!(u16);
-impl_endian_read!(u32);
-impl_endian_read!(u64);
+impl_from_endian!(u16);
+impl_from_endian!(u32);
+impl_from_endian!(u64);
 
 #[derive(Debug, Clone, Copy)]
 enum Endian {
