@@ -242,7 +242,8 @@ impl Elf<'_> {
         let phoff = usize::try_from(phoff).expect("phoff too large!");
 
         for ph in 0..phnum {
-            let pos = phoff + usize::from(ph * phentsize);
+            let off = ph.checked_mul(phentsize).map(usize::from).expect("phdr offset overflowed");
+            let pos = phoff.checked_add(off).expect("phdr position overflowed");
             r.set_pos(pos);
 
             // We only care about load segments.
