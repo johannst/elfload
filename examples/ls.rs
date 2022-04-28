@@ -3,10 +3,14 @@ use elfload::Elf;
 fn main() {
     let ls_bytes = include_bytes!("/bin/ls");
 
-    match Elf::parse(ls_bytes) {
+    match Elf::<4>::parse(ls_bytes) {
         Ok(elf) => {
-            println!("ELF machine: {:?} entry: 0x{:08x}", elf.machine, elf.entry);
-            for l in &elf.load_segments {
+            println!(
+                "ELF machine: {:?} entry: 0x{:08x}",
+                elf.machine(),
+                elf.entry()
+            );
+            for l in elf.load_segments() {
                 println!(
                     "LOAD: vaddr: 0x{:08x} zero_pad: {:8} {}{}{}",
                     l.vaddr,

@@ -1,9 +1,13 @@
+#![no_std]
+
 #[derive(Debug)]
 pub enum Error {
     /// Wrong or missing ELF file magic.
     WrongElfMagic,
     /// No more bytes left while parsing the ELF file.
     OutOfBytes,
+    /// Const generic on `Elf` is too small to hold all `LOAD` from the ELF file.
+    OutOfLoadSegments,
     /// Unknown value in `e_ident:EI_CLASS` byte.
     UnknownBitness(u8),
     /// Unknown value in `e_ident:EI_DATA` byte.
@@ -12,10 +16,10 @@ pub enum Error {
     UnknownMachine(u16),
 }
 
-type Result<T> = std::result::Result<T, Error>;
+type Result<T> = core::result::Result<T, Error>;
 
 trait FromEndian: Sized {
-    const N: usize = std::mem::size_of::<Self>();
+    const N: usize = core::mem::size_of::<Self>();
     fn from_le_bytes<B: AsRef<[u8]>>(bytes: B) -> Option<Self>;
     fn from_be_bytes<B: AsRef<[u8]>>(bytes: B) -> Option<Self>;
 }
@@ -177,7 +181,7 @@ impl<'bytes> ElfReader<'bytes> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct LoadSegment<'bytes> {
     pub vaddr: u64,
     pub bytes: &'bytes [u8],
@@ -188,14 +192,14 @@ pub struct LoadSegment<'bytes> {
 }
 
 #[derive(Debug)]
-pub struct Elf<'bytes> {
-    pub machine: Machine,
-    pub entry: u64,
-    pub load_segments: Vec<LoadSegment<'bytes>>,
+pub struct Elf<'bytes, const N: usize> {
+    machine: Machine,
+    entry: u64,
+    load_segments: [Option<LoadSegment<'bytes>>; N],
 }
 
-impl Elf<'_> {
-    pub fn parse<'bytes>(b: &'bytes [u8]) -> Result<Elf<'bytes>> {
+impl<const N: usize> Elf<'_, N> {
+    pub fn parse<'bytes>(b: &'bytes [u8]) -> Result<Elf<'bytes, N>> {
         let mut r = ElfReader::new(b);
 
         //
@@ -232,7 +236,8 @@ impl Elf<'_> {
         // Parse load program header.
         //
 
-        let mut load_segments = Vec::with_capacity(usize::from(phnum));
+        let mut load_segments = [None; N];
+        let mut load_segments_slice = &mut load_segments[..];
 
         const PT_LOAD: u32 = 1;
         const PF_X: u32 = 1 << 0;
@@ -242,7 +247,10 @@ impl Elf<'_> {
         let phoff = usize::try_from(phoff).expect("phoff too large!");
 
         for ph in 0..phnum {
-            let off = ph.checked_mul(phentsize).map(usize::from).expect("phdr offset overflowed");
+            let off = ph
+                .checked_mul(phentsize)
+                .map(usize::from)
+                .expect("phdr offset overflowed");
             let pos = phoff.checked_add(off).expect("phdr position overflowed");
             r.set_pos(pos);
 
@@ -281,14 +289,20 @@ impl Elf<'_> {
             let w = (flags & PF_W) != 0;
             let r = (flags & PF_R) != 0;
 
-            load_segments.push(LoadSegment {
-                vaddr,
-                bytes,
-                zero_pad: memsz - filesz,
-                x,
-                w,
-                r,
-            });
+            load_segments_slice = if let Some((slot, rest)) = load_segments_slice.split_first_mut()
+            {
+                *slot = Some(LoadSegment {
+                    vaddr,
+                    bytes,
+                    zero_pad: memsz - filesz,
+                    x,
+                    w,
+                    r,
+                });
+                rest
+            } else {
+                return Err(Error::OutOfLoadSegments);
+            };
         }
 
         Ok(Elf {
@@ -296,5 +310,20 @@ impl Elf<'_> {
             entry,
             load_segments,
         })
+    }
+
+    #[inline]
+    pub fn machine(&self) -> Machine {
+        self.machine
+    }
+
+    #[inline]
+    pub fn entry(&self) -> u64 {
+        self.entry
+    }
+
+    #[inline]
+    pub fn load_segments(&self) -> impl Iterator<Item = &LoadSegment<'_>> {
+        self.load_segments.iter().flatten()
     }
 }
