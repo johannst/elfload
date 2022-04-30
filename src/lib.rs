@@ -208,8 +208,8 @@ pub struct Elf<'bytes, const N: usize> {
     load_segments: [Option<LoadSegment<'bytes>>; N],
 }
 
-impl<const N: usize> Elf<'_, N> {
-    pub fn parse(b: &[u8]) -> Result<Elf<'_, N>> {
+impl<'bytes, const N: usize> Elf<'bytes, N> {
+    pub fn parse(b: &'bytes [u8]) -> Result<Elf<'bytes, N>> {
         let mut r = ElfReader::new(b);
 
         //
@@ -337,7 +337,7 @@ impl<const N: usize> Elf<'_, N> {
     }
 
     #[inline]
-    pub fn load_segments(&self) -> impl Iterator<Item = &LoadSegment<'_>> {
+    pub fn load_segments(&self) -> impl Iterator<Item = &LoadSegment<'bytes>> {
         self.load_segments.iter().flatten()
     }
 }
