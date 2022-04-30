@@ -8,6 +8,8 @@ pub enum Error {
     OutOfBytes,
     /// Const generic on `Elf` is too small to hold all `LOAD` from the ELF file.
     OutOfLoadSegments,
+    /// Failed to convert between data types internally.
+    TypeConversion(&'static str),
     /// Unknown value in `e_ident:EI_CLASS` byte.
     UnknownBitness(u8),
     /// Unknown value in `e_ident:EI_DATA` byte.
@@ -185,10 +187,18 @@ impl<'bytes> ElfReader<'bytes> {
 pub struct LoadSegment<'bytes> {
     pub vaddr: u64,
     pub bytes: &'bytes [u8],
-    pub zero_pad: usize,
+    pub zero_pad: u64,
     pub x: bool,
     pub w: bool,
     pub r: bool,
+}
+
+impl LoadSegment<'_> {
+    #[inline]
+    pub fn contains(&self, addr: u64) -> bool {
+        let len = u64::try_from(self.bytes.len()).expect("segment byte len exceeds u64");
+        self.vaddr <= addr && addr < (self.vaddr + len + self.zero_pad)
+    }
 }
 
 #[derive(Debug)]
@@ -244,14 +254,17 @@ impl<const N: usize> Elf<'_, N> {
         const PF_W: u32 = 1 << 1;
         const PF_R: u32 = 1 << 2;
 
-        let phoff = usize::try_from(phoff).expect("phoff too large!");
+        let phoff = usize::try_from(phoff)
+            .map_err(|_| Error::TypeConversion("phoff does not fit into usize"))?;
 
         for ph in 0..phnum {
             let off = ph
                 .checked_mul(phentsize)
                 .map(usize::from)
-                .expect("phdr offset overflowed");
-            let pos = phoff.checked_add(off).expect("phdr position overflowed");
+                .ok_or(Error::TypeConversion("phdr offset does not fit into usize"))?;
+            let pos = phoff.checked_add(off).ok_or(Error::TypeConversion(
+                "phdr position does not fit into usize",
+            ))?;
             r.set_pos(pos);
 
             // We only care about load segments.
@@ -276,15 +289,16 @@ impl<const N: usize> Elf<'_, N> {
             }
             let _align = r.read_native(en, bit)?;
 
-            let offset = usize::try_from(offset).expect("file offset too large");
-            let filesz = usize::try_from(filesz).expect("file size too large");
-            let memsz = usize::try_from(memsz).expect("mem size too large");
+            let data_off = usize::try_from(offset)
+                .map_err(|_| Error::TypeConversion("file offset does not fit into usize"))?;
+            let data_len = usize::try_from(filesz)
+                .map_err(|_| Error::TypeConversion("file size does not fit into usize"))?;
 
             // Seek to start of PT_LOAD segment bytes.
-            r.set_pos(offset);
+            r.set_pos(data_off);
 
             // Get slice of PT_LOAD segment bytes.
-            let bytes = r.read_slice(filesz)?;
+            let bytes = r.read_slice(data_len)?;
             let x = (flags & PF_X) != 0;
             let w = (flags & PF_W) != 0;
             let r = (flags & PF_R) != 0;
