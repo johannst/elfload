@@ -50,6 +50,7 @@ macro_rules! impl_from_endian {
     };
 }
 
+impl_from_endian!(u8);
 impl_from_endian!(u16);
 impl_from_endian!(u32);
 impl_from_endian!(u64);
@@ -136,15 +137,6 @@ impl<'bytes> ElfReader<'bytes> {
         }
     }
 
-    fn read_u8(&mut self) -> Result<u8> {
-        if let Some(byte) = self.bytes.get(self.pos) {
-            self.bump(1);
-            Ok(*byte)
-        } else {
-            Err(Error::OutOfBytes)
-        }
-    }
-
     fn read<E: FromEndian>(&mut self, en: Endian) -> Result<E> {
         let bytes = self.bytes.get(self.pos..).ok_or(Error::OutOfBytes)?;
 
@@ -220,8 +212,8 @@ impl<'bytes, const N: usize> Elf<'bytes, N> {
             return Err(Error::WrongElfMagic);
         }
 
-        let bit = r.read_u8().map(Bit::try_from)??;
-        let en = r.read_u8().map(Endian::try_from)??;
+        let bit = r.read::<u8>(Endian::Little).map(Bit::try_from)??;
+        let en = r.read::<u8>(Endian::Little).map(Endian::try_from)??;
 
         // Consume rest of e_ident.
         r.bump(10);
